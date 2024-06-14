@@ -9,7 +9,7 @@ import base64
 import ssl
 
 # Brevo API 配置
-BREVO_API_KEY = '.....'
+BREVO_API_KEY = 'xkeysib....'
 BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email'
 
 # 认证用户字典
@@ -113,4 +113,54 @@ class CustomSMTPHandler:
         print(f"Received email from {from_addr} to {to_addr}")
 
         await self.send_email_with_brevo(from_addr, to_addr, subject, body, html_body)
-        return '250 Message acce
+        return '250 Message accepted for delivery'
+
+    async def send_email_with_brevo(self, from_addr, to_addr, subject, body, html_body):
+        """Send email using Brevo API."""
+        headers = {
+            "api-key": BREVO_API_KEY,
+            "Content-Type": "application/json",
+        }
+
+        data = {
+            "sender": {"email": from_addr},
+            "to": [{"email": to_addr}],
+            "subject": subject,
+            "textContent": body,
+            "htmlContent": html_body if html_body else body,
+            "tags": ["transactional"],
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(BREVO_API_URL, json=data, headers=headers) as response:
+                if response.status == 201:
+                    print("Email sent successfully via Brevo API")
+                else:
+                    response_data = await response.json()
+                    print(f"Failed to send email. Status: {response.status}, Response: {response_data}")
+
+def load_ssl_context():
+    """Load SSL context."""
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context.load_cert_chain(certfile=CERT_PATH, keyfile=KEY_PATH)
+    return context
+
+async def main():
+    handler = CustomSMTPHandler()
+    ssl_context = load_ssl_context()
+
+    controller = Controller(handler, hostname='0.0.0.0', port=587, ssl_context=ssl_context, ready_timeout=10, auth_exclude_mechanism=["LOGIN"])
+    
+    controller.start()
+    print("SMTP server with TLS listening on port 587")
+
+    try:
+        await asyncio.Event().wait()  # Wait indefinitely
+    except KeyboardInterrupt:
+        controller.stop()
+        print("SMTP server stopped")
+
+if __name__ == "__main__":
+    # 配置日志记录
+    logging.basicConfig(level=logging.DEBUG)
+    asyncio.run(main())
